@@ -1,0 +1,466 @@
+Program 1
+
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+    MPI_Init(NULL, NULL);
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    char processor_name[MPI_MAX_PROCESSOR_NAME];
+    int name_len;
+    MPI_Get_processor_name(processor_name, &name_len);
+    printf("Hello world! from processor, my rank is %d out of %d processors\n", world_rank, world_size);
+    MPI_Finalize();
+}
+
+----------------------------------------------------------------------
+Program 2
+
+#include <mpi.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#define n 9
+
+int a[] = { 1, 5, 2, 6, 2, 0, 1, 9 };
+int a2[1000];
+
+int main(int argc, char* argv[])
+{
+
+    int pid, np,
+        elements_per_process,
+        n_elements_recieved;
+    MPI_Status status;
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+    MPI_Comm_size(MPI_COMM_WORLD, &np);
+
+    if (pid == 0) {
+        int index, i;
+        elements_per_process = n / np;
+        if (np > 1) {
+            for (i = 1; i < np - 1; i++) {
+                index = i * elements_per_process;
+
+                MPI_Send(&elements_per_process,
+                    1, MPI_INT, i, 0,
+                    MPI_COMM_WORLD);
+                MPI_Send(&a[index],
+                    elements_per_process,
+                    MPI_INT, i, 0,
+                    MPI_COMM_WORLD);
+            }
+
+            index = i * elements_per_process;
+            int elements_left = n - index;
+
+            MPI_Send(&elements_left,
+                1, MPI_INT,
+                i, 0,
+                MPI_COMM_WORLD);
+            MPI_Send(&a[index],
+                elements_left,
+                MPI_INT, i, 0,
+                MPI_COMM_WORLD);
+        }
+
+        int sum = 0;
+        for (i = 0; i < elements_per_process; i++)
+            sum += a[i];
+
+        int tmp;
+        for (i = 1; i < np; i++) {
+            MPI_Recv(&tmp, 1, MPI_INT,
+                MPI_ANY_SOURCE, 0,
+                MPI_COMM_WORLD,
+                &status);
+            int sender = status.MPI_SOURCE;
+
+            sum += tmp;
+        }
+
+        printf("Sum of array provided is : %d\n", sum);
+    }
+    else {
+        MPI_Recv(&n_elements_recieved,
+            1, MPI_INT, 0, 0,
+            MPI_COMM_WORLD,
+            &status);
+
+        MPI_Recv(&a2, n_elements_recieved,
+            MPI_INT, 0, 0,
+            MPI_COMM_WORLD,
+            &status);
+
+        int partial_sum = 0;
+        for (int i = 0; i < n_elements_recieved; i++)
+            partial_sum += a2[i];
+
+        MPI_Send(&partial_sum, 1, MPI_INT,
+            0, 0, MPI_COMM_WORLD);
+    }
+
+    MPI_Finalize();
+
+    return 0;
+}
+
+
+---------------------------------------------------------------------------
+Program 3
+
+#include "mpi.h"
+#include <stdio.h>
+#include <stdlib.h>
+#define n 8
+int a[] = { 1, 5, 2, 6, 2, 0, 1, 9 };
+// Temporary array for other processes
+int b[1000];
+int main(int argc, char* argv[])
+{
+	int process_id, no_of_process,
+		elements_per_process,
+		n_elements_recieved;
+	MPI_Status status;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &process_id);
+	MPI_Comm_size(MPI_COMM_WORLD, &no_of_process);
+	// For process 0
+	if (process_id == 0) {
+		int index, i;
+		elements_per_process = n / no_of_process;
+		if (no_of_process > 1) {
+			for (i = 1; i < no_of_process - 1; i++) {
+				index = i * elements_per_process;
+				MPI_Send(&elements_per_process, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				MPI_Send(&a[index], elements_per_process, MPI_INT, i, 0,
+					MPI_COMM_WORLD);
+			}
+			// last process adds remaining elements
+				index = i * elements_per_process;
+			int elements_left = n - index;
+			MPI_Send(&elements_left, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+			MPI_Send(&a[index], elements_left, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+		// sum by process 0
+		int sum = 0;
+		for (i = 0; i < elements_per_process; i++)
+			sum += a[i];
+		printf("Sum by this Slave Process is %d = %d\n", process_id, sum);
+		// partial sums from other processes
+		int tmp;
+		for (i = 1; i < no_of_process; i++) {
+			MPI_Recv(&tmp, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+			int sender = status.MPI_SOURCE;
+			sum += tmp;
+		}
+		// prints the final sum of array
+		printf("Final Sum of array by the Master Process is : %d\n", sum);
+	}
+	// Other processes
+	else {
+		MPI_Recv(&n_elements_recieved, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+		MPI_Recv(&b, n_elements_recieved, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+		int partial_sum = 0;
+		for (int i = 0; i < n_elements_recieved; i++)
+			partial_sum += b[i];
+		printf("Sum by process %d = %d\n", process_id, partial_sum);
+		MPI_Send(&partial_sum, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+	}
+	MPI_Finalize();
+	return 0;
+}
+
+
+-------------------------------------------------------------------------------------------------------
+
+Program 4
+#include <mpi.h>
+#include <stdio.h>
+int main(int argc, char** argv)
+{
+	// Initialize the MPI environment
+	MPI_Init(NULL, NULL);
+	// Get the number of processes
+	int world_size;
+	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+	// COMM_WORLD is the communicator world
+	// Get the rank of the process
+	int world_rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+	// Get the name of the processor
+	char processor_name[MPI_MAX_PROCESSOR_NAME];
+	int name_len;
+	MPI_Get_processor_name(processor_name, &name_len);
+	printf("Hello world from process %s, rank %d out of %d processes\n\n",
+		processor_name, world_rank, world_size);
+	if (world_rank == 0)
+	{
+		char message[] = "Shivam";
+		MPI_Send(message, 6, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
+	}
+	else
+	{
+		char message[6];
+		MPI_Recv(message, 6, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			printf("Message Successfully Received\n");
+		printf("Message Recieved : %s\n", message);
+	}
+	MPI_Finalize();
+	return 0;
+}
+
+
+--------------------------------------------------------------------------------------------------------
+Program 5
+#include<stdio.h>
+#include<iostream>
+#include "mpi.h"
+#define NUM_ROWS_A 8
+#define NUM_COLUMNS_A 10
+#define NUM_ROWS_B 10
+#define NUM_COLUMNS_B 8
+#define MASTER_TO_SLAVE_TAG 1 //tag for messages sent from master to slaves
+#define SLAVE_TO_MASTER_TAG 4 //tag for messages sent from slaves to master
+void create_matrix();
+void printArray();
+int rank;
+int size;
+int i, j, k;
+double A[NUM_ROWS_A][NUM_COLUMNS_A];
+double B[NUM_ROWS_B][NUM_COLUMNS_B];
+double result[NUM_ROWS_A][NUM_COLUMNS_B];
+int low_bound; //low bound of the number of rows of [A] allocated to a slave
+int upper_bound; //upper bound of the number of rows of [A] allocated to a slave
+int portion; //portion of the number of rows of [A] allocated to a slave
+MPI_Status status; // store status of a MPI_Recv
+MPI_Request request; //capture request of a MPI_Send
+int main(int argc, char* argv[])
+{
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	if (rank == 0)
+	{ // master process
+		create_matrix();
+		for (i = 1; i < size; i++)
+		{
+			portion = (NUM_ROWS_A / (size - 1)); // portion without master
+			low_bound = (i - 1) * portion;
+			if (((i + 1) == size) && ((NUM_ROWS_A % (size - 1)) != 0))
+			{//if rows of [A] cannot be equally divided among slaves
+				upper_bound = NUM_ROWS_A; //last slave gets all the remaining rows
+			}
+			else {
+					upper_bound = low_bound + portion; //rows of [A] are equally divisable among slaves
+			}
+			MPI_Send(&low_bound, 1, MPI_INT, i, MASTER_TO_SLAVE_TAG,
+				MPI_COMM_WORLD);
+			MPI_Send(&upper_bound, 1, MPI_INT, i, MASTER_TO_SLAVE_TAG + 1,
+				MPI_COMM_WORLD);
+			MPI_Send(&A[low_bound][0], (upper_bound - low_bound) * NUM_COLUMNS_A,
+				MPI_DOUBLE, i, MASTER_TO_SLAVE_TAG + 2, MPI_COMM_WORLD);
+		}
+	}
+	//broadcast [B] to all the slaves
+	MPI_Bcast(&B, NUM_ROWS_B * NUM_COLUMNS_B, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	/* Slave process*/
+	if (rank > 0)
+	{
+		MPI_Recv(&low_bound, 1, MPI_INT, 0, MASTER_TO_SLAVE_TAG, MPI_COMM_WORLD,
+			&status);
+		MPI_Recv(&upper_bound, 1, MPI_INT, 0, MASTER_TO_SLAVE_TAG + 1,
+			MPI_COMM_WORLD, &status);
+		MPI_Recv(&A[low_bound][0], (upper_bound - low_bound) * NUM_COLUMNS_A,
+			MPI_DOUBLE, 0, MASTER_TO_SLAVE_TAG + 2, MPI_COMM_WORLD, &status);
+		printf("Process %d calculating for rows %d to %d of Matrix A\n", rank,
+			low_bound, upper_bound);
+		for (i = low_bound; i < upper_bound; i++)
+		{
+			for (j = 0; j < NUM_COLUMNS_B; j++)
+			{
+				for (k = 0; k < NUM_ROWS_B; k++)
+				{
+					result[i][j] += (A[i][k] * B[k][j]);
+				}
+			}
+		}
+		MPI_Send(&low_bound, 1, MPI_INT, 0, SLAVE_TO_MASTER_TAG, MPI_COMM_WORLD);
+		MPI_Send(&upper_bound, 1, MPI_INT, 0, SLAVE_TO_MASTER_TAG + 1,
+			MPI_COMM_WORLD);
+		MPI_Send(&result[low_bound][0], (upper_bound - low_bound) * NUM_COLUMNS_B,
+			MPI_DOUBLE, 0, SLAVE_TO_MASTER_TAG + 2, MPI_COMM_WORLD);
+	}
+	/* master gathers processed work*/
+	if (rank == 0) {
+		for (i = 1; i < size; i++) {
+			MPI_Recv(&low_bound, 1, MPI_INT, i, SLAVE_TO_MASTER_TAG, MPI_COMM_WORLD,
+				&status);
+			MPI_Recv(&upper_bound, 1, MPI_INT, i, SLAVE_TO_MASTER_TAG + 1,
+				MPI_COMM_WORLD, &status);
+				MPI_Recv(&result[low_bound][0], (upper_bound - low_bound) *
+					NUM_COLUMNS_B, MPI_DOUBLE, i, SLAVE_TO_MASTER_TAG + 2, MPI_COMM_WORLD, &status);
+		}
+		printArray();
+	}
+	MPI_Finalize();
+	return 0;
+}
+void create_matrix()
+{
+	for (i = 0; i < NUM_ROWS_A; i++) {
+		for (j = 0; j < NUM_COLUMNS_A; j++) {
+			A[i][j] = i + j;
+		}
+	}
+	for (i = 0; i < NUM_ROWS_B; i++) {
+		for (j = 0; j < NUM_COLUMNS_B; j++) {
+			B[i][j] = i * j;
+		}
+	}
+}
+void printArray()
+{
+	printf("Given matrix A is: \n");
+	for (i = 0; i < NUM_ROWS_A; i++) {
+		printf("\n");
+		for (j = 0; j < NUM_COLUMNS_A; j++)
+			printf("%8.2f ", A[i][j]);
+	}
+	printf("\n\n\n");
+	printf("Given matrix B is: \n");
+	for (i = 0; i < NUM_ROWS_B; i++) {
+		printf("\n");
+		for (j = 0; j < NUM_COLUMNS_B; j++)
+			printf("%8.2f ", B[i][j]);
+	}
+	printf("\n\n\n");
+	printf("Final Multiplied Matrix is: \n");
+	for (i = 0; i < NUM_ROWS_A; i++) {
+		printf("\n");
+		for (j = 0; j < NUM_COLUMNS_B; j++)
+			printf("%8.2f ", result[i][j]);
+	}
+	printf("\n\n");
+}
+
+----------------------------------------------------------------------------------------
+Program 6
+
+Open MP
+
+
+#include <omp.h>
+#include <stdio.h>
+#include <iostream>
+
+using namespace std;
+void reset_freq(int* freq, int THREADS)
+{
+	for (int i = 0; i < THREADS; i++)
+		freq[i] = 0;
+}
+int main(int* argc, char** argv)
+{
+	int n, THREADS, i;
+	printf("Enter the number of iterations :");
+	scanf_s("%d", &n);
+	printf("Enter the number of threads (max 8): ");
+	scanf_s("%d", &THREADS);
+	int freq[6];
+	reset_freq(freq, THREADS);
+	// simple parallel for with unequal iterations
+#pragma omp parallel for num_threads(THREADS)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("\nIn default scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread No. %d : %d iters\n", i, freq[i]);
+	}
+	// using static scheduling
+	int CHUNK;
+	printf("\nUsing static scheduling...\n");
+	printf("Enter the chunk size :");
+	scanf_s("%d", &CHUNK);
+	// using a static, round robin schedule for the loop iterations
+	reset_freq(freq, THREADS);
+	// useful when the workload is ~ same across each thread, not when otherwise
+#pragma omp parallel for num_threads(THREADS) schedule(static, CHUNK)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("\nIn static scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread No. %d : %d iterations\n", i, freq[i]);
+	}
+	// auto scheduling depending on the compiler
+	printf("\nUsing automatic scheduling...\n");
+	reset_freq(freq, THREADS);
+#pragma omp parallel for num_threads(THREADS) schedule(static)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("In auto scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread No. %d : %d iters\n", i, freq[i]);
+	}
+	return 0;
+}
+-------------------------------------------------------------------------------------------------------------------
+
+Program 7
+#include <omp.h>
+#include <stdio.h>
+int main(int* argc, char** argv)
+{ // invocation of the main program
+// use the fopenmp flag for compiling
+	int num_threads, THREAD_COUNT = 4;
+	int thread_ID;
+	int section_sizes[4] = {
+	0, 100, 200, 300 };
+	printf("Implementing Work load sharing of threads...\n");
+#pragma omp parallel private(thread_ID) num_threads(THREAD_COUNT)
+	{
+		// private means each thread will have a private variable
+		// thread_ID
+		thread_ID = omp_get_thread_num();
+		printf("I am thread number %d!\n", thread_ID);
+		int value_count = 0;
+		if (thread_ID > 0)
+		{
+			int work_load = section_sizes[thread_ID];
+			// each thread has a different section size
+			for (int i = 0; i < work_load; i++)
+				value_count++;
+			printf("Total Number of values computed are : %d\n", value_count);
+		}
+#pragma omp barrier
+		if (thread_ID == 0)
+		{
+			printf("The Total number of threads are : %d", omp_get_num_threads());
+		}
+	}
+	return 0;
+}
+
+
+
+-------------------------------------------------------------------

@@ -1,0 +1,307 @@
+---------- PROGRAM 1 ---------
+ 
+ Wahi medium waala
+
+ --------- PROGRAM 2 ---------
+ #include <mpi.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+// size of array
+#define n 10
+
+int a[] = { 1, 2, 3, 4, 5, 6, 7, 9, 10 };
+
+// Temporary array for slave process
+int a2[1000];
+
+int main(int argc, char* argv[])
+{
+
+    int pid, np,
+        elements_per_process,
+        n_elements_recieved;
+    // np -> no. of processes
+    // pid -> process id
+
+    MPI_Status status;
+
+    // Creation of parallel processes
+    MPI_Init(&argc, &argv);
+
+    // find out process ID,
+    // and how many processes were started
+    MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+    MPI_Comm_size(MPI_COMM_WORLD, &np);
+
+    // master process
+    if (pid == 0) {
+        int index, i;
+        elements_per_process = n / np;
+
+        // check if more than 1 processes are run
+        if (np > 1) {
+            // distributes the portion of array
+            // to child processes to calculate
+            // their partial sums
+            for (i = 1; i < np - 1; i++) {
+                index = i * elements_per_process;
+
+                MPI_Send(&elements_per_process,
+                    1, MPI_INT, i, 0,
+                    MPI_COMM_WORLD);
+                MPI_Send(&a[index],
+                    elements_per_process,
+                    MPI_INT, i, 0,
+                    MPI_COMM_WORLD);
+            }
+
+            // last process adds remaining elements
+            index = i * elements_per_process;
+            int elements_left = n - index;
+
+            MPI_Send(&elements_left,
+                1, MPI_INT,
+                i, 0,
+                MPI_COMM_WORLD);
+            MPI_Send(&a[index],
+                elements_left,
+                MPI_INT, i, 0,
+                MPI_COMM_WORLD);
+        }
+
+        // master process add its own sub array
+        int sum = 0;
+        for (i = 0; i < elements_per_process; i++)
+            sum += a[i];
+
+        // collects partial sums from other processes
+        int tmp;
+        for (i = 1; i < np; i++) {
+            MPI_Recv(&tmp, 1, MPI_INT,
+                MPI_ANY_SOURCE, 0,
+                MPI_COMM_WORLD,
+                &status);
+            int sender = status.MPI_SOURCE;
+
+            sum += tmp;
+        }
+
+        // prints the final sum of array
+        printf("Sum of array is : %d\n", sum);
+    }
+    // slave processes
+    else {
+        MPI_Recv(&n_elements_recieved,
+            1, MPI_INT, 0, 0,
+            MPI_COMM_WORLD,
+            &status);
+
+        // stores the received array segment
+        // in local array a2
+        MPI_Recv(&a2, n_elements_recieved,
+            MPI_INT, 0, 0,
+            MPI_COMM_WORLD,
+            &status);
+
+        // calculates its partial sum
+        int partial_sum = 0;
+        for (int i = 0; i < n_elements_recieved; i++)
+            partial_sum += a2[i];
+
+        // sends the partial sum to the root process
+        MPI_Send(&partial_sum, 1, MPI_INT,
+            0, 0, MPI_COMM_WORLD);
+    }
+
+    // cleans up all MPI state before exit of process
+    MPI_Finalize();
+
+    return 0;
+}
+---------- PROGRAM 3 ---------
+#include <mpi.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <vector>
+int main(int argc, char** argv) {
+	// start the MPI code
+	MPI_Init(NULL, NULL);
+	int num_procs;
+	MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	if (rank == 0)
+	{
+		// read the array
+		int n;
+		printf("Enter number of elements : ");
+		scanf_s("%d", &n);
+		int arr[] = { 1,2,3,4,5,6};
+		
+		printf("Array is -\n [ ");
+		for (int i = 0; i < n; i++)
+		{
+			printf("%d ", arr[i]);
+		}
+		printf("]\n");
+		int elem_to_send = n / num_procs;
+		int tag = 0;
+		for (int i = 1; i < num_procs; i++)
+		{ // send the size
+			if (i != num_procs - 1)
+			{
+				elem_to_send = n / num_procs;
+				MPI_Send(&elem_to_send, 1, MPI_INT, i, i + num_procs, MPI_COMM_WORLD);
+				MPI_Send(&arr[i * (elem_to_send)], elem_to_send, MPI_INT, i, i + num_procs
+					+ 1, MPI_COMM_WORLD);
+				continue;
+			}
+			// elements would be changed
+			elem_to_send = n / num_procs + n % num_procs;
+			MPI_Send(&elem_to_send, 1, MPI_INT, i, i + num_procs, MPI_COMM_WORLD);
+			MPI_Send(&arr[(num_procs - 1) * (n / num_procs)], elem_to_send, MPI_INT, i, i +
+				num_procs + 1, MPI_COMM_WORLD);
+			// send the array
+		}
+		int ans = 0;
+		for (int i = 0; i < n / num_procs; i++)
+			ans += arr[i];
+		// recv the data into the local var s_rec
+		int s_rec;
+		for (int i = 1; i < num_procs; i++)
+		{
+			s_rec = 0;
+			MPI_Recv(&s_rec, 1, MPI_INT, i, i + num_procs + 2, MPI_COMM_WORLD,
+				MPI_STATUS_IGNORE);
+			ans += s_rec;
+		}
+		printf("Total sum of array is %d\n", ans);
+	}
+	else
+	{
+		// receive the size of elements
+		int size;
+		MPI_Recv(&size, 1, MPI_INT, 0, rank + num_procs, MPI_COMM_WORLD,
+			MPI_STATUS_IGNORE);
+		int arr[6];
+		MPI_Recv(arr, size, MPI_INT, 0, rank + num_procs + 1, MPI_COMM_WORLD,
+			MPI_STATUS_IGNORE);
+		int local = 0;
+		for (int i = 0; i < size; i++)
+			local = local + arr[i];
+		printf("\nProcess %d sending sum %d back to main...\n", rank, local);
+		MPI_Send(&local, 1, MPI_INT, 0, rank + num_procs + 2, MPI_COMM_WORLD);
+	}
+	MPI_Finalize();
+}
+
+---------- Program 6 ----------
+
+#include <omp.h>
+#include <stdio.h>
+#include <iostream>
+
+using namespace std;
+void reset_freq(int* freq, int THREADS)
+{
+	for (int i = 0; i < THREADS; i++)
+		freq[i] = 0;
+}
+int main(int* argc, char** argv)
+{
+	int n, THREADS, i;
+	printf("Enter the number of iterations :");
+	scanf_s("%d", &n);
+	printf("Enter the number of threads (max 8): ");
+	scanf_s("%d", &THREADS);
+	int freq[6];
+	reset_freq(freq, THREADS);
+	// simple parallel for with unequal iterations
+#pragma omp parallel for num_threads(THREADS)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("\nIn default scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread %d : %d iters\n", i, freq[i]);
+	}
+	// using static scheduling
+	int CHUNK;
+	printf("\nUsing static scheduling...\n");
+	printf("Enter the chunk size :");
+		scanf_s("%d", &CHUNK);
+	// using a static, round robin schedule for the loop iterations
+	reset_freq(freq, THREADS);
+	// useful when the workload is ~ same across each thread, not when otherwise
+#pragma omp parallel for num_threads(THREADS) schedule(static, CHUNK)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("\nIn static scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread %d : %d iters\n", i, freq[i]);
+	}
+	// auto scheduling depending on the compiler
+	printf("\nUsing automatic scheduling...\n");
+	reset_freq(freq, THREADS);
+#pragma omp parallel for num_threads(THREADS) schedule(static)
+	for (i = 0; i < n; i++)
+	{
+		// printf("Thread num %d executing iter %d\n", omp_get_thread_num(), i);
+		freq[omp_get_thread_num()]++;
+	}
+#pragma omp barrier
+	printf("In auto scheduling, we have the following thread distribution :- \n");
+	for (int i = 0; i < THREADS; i++)
+	{
+		printf("Thread %d : %d iters\n", i, freq[i]);
+	}
+	return 0;
+}
+
+------ PROGRAM 7 ---------
+
+#include <omp.h>
+#include <stdio.h>
+int main(int *argc, char **argv)
+{ // invocation of the main program
+// use the fopenmp flag for compiling
+int num_threads, THREAD_COUNT = 4;
+int thread_ID;
+int section_sizes[4] = {
+0, 100, 200, 300};
+printf("Work load sharing of threads...\n");
+#pragma omp parallel private(thread_ID) num_threads(THREAD_COUNT)
+{
+// private means each thread will have a private variable
+// thread_ID
+thread_ID = omp_get_thread_num();
+printf("I am thread number %d!\n", thread_ID);
+int value_count = 0;
+if (thread_ID > 0)
+{
+int work_load = section_sizes[thread_ID];
+// each thread has a different section size
+for (int i = 0; i < work_load; i++)
+value_count++;
+printf("Number of values computed : %d\n", value_count);
+}
+#pragma omp barrier
+if (thread_ID == 0)
+{
+printf("Total number of threads are %d", omp_get_num_threads());
+}
+}
+return 0;
+}
+
